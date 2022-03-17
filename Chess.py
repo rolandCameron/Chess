@@ -1,22 +1,31 @@
+from tkinter import W
 import numpy as np
 import sys
 import pygame
 
 pygame.init()
 
+monitorInfo = pygame.display.Info()
+
 fps = 60
 fpsClock = pygame.time.Clock()
 
-boardSize = 1350
+boardSize = monitorInfo.current_h
+sidebar = 0
 numSq = 8
 sqSize = boardSize/numSq
 
 bSq = (204,	85, 13)
+bSqDark = (164, 45, 0)
 wSq = (240, 191, 96)
+wSqDark = (200, 151, 56)
+recentClick = [3, 3]
+selectedSq = "none"
+turn = "w"
 
-startFEN = "r2Bk2r/ppp2ppp/2p5/8/4n1b1/3P4/PPP1KbPP/RN1Q1B1R w kq - 2 9"
+startFEN = "r2Bk2r/ppp2ppp/2p5/8/4n1b1/3P4/PPP1KbPP/RN1Q1B1R w kq - 2 9" #FEN string the game is started on
 
-width, height = boardSize, boardSize
+width, height = boardSize + sidebar, boardSize
 screen = pygame.display.set_mode((width, height))
 
 #Import pieces
@@ -50,22 +59,42 @@ _ = pygame.transform.scale(_, (0, 0))
 #Pieces Dict
 pieces = {
     "K": K,
+    K: "K",
     "k": k,
+    k: "k",
     "Q": Q,
+    Q: "Q",
     "q": q,
+    q: "q",
     "B": B,
+    B: "B",
     "b": b,
+    b: "b",
     "N": N,
+    N: "N",
     "n": n,
+    n: "n",
     "R": R,
+    R: "R",
     "r": r,
+    r: "r",
     "P": P,
+    P: "P",
     "p": p,
-    "-": _
+    p: "p",
+    "-": _,
+    _: "_"
+}
+
+#Turn flip dict
+turnFlip = {
+    "w": "b",
+    "b": "w"
 }
 
 #Board
 board = np.array([[_ for x in range(numSq)] for y in range(numSq)])
+darkenedSquares = np.array([[False for x in range(numSq)] for y in range(numSq)])
 
 #Functions
 def isInt(integer):
@@ -75,25 +104,116 @@ def isInt(integer):
     except:
         return False
 
+def pcColour(pcCoords):
+    if pieces[board[pcCoords[0], pcCoords[1]]] == "_":
+        return turnFlip[turn]
+    elif pieces[board[pcCoords[0], pcCoords[1]]] != pieces[board[pcCoords[0], pcCoords[1]]].lower():
+        return "w"
+    else:
+        return "b"
+
+def absChange(pcPos, desPos):
+    absXChange = abs(pcPos[0] - desPos[0])
+    absYChange = abs(pcPos[1] - desPos[1])
+    absChange = [absXChange, absYChange]
+    return absChange
+
+def changeDir(pcPos, desPos):
+    dirs = [0, 0]
+    if pcPos[0] > desPos[0]:
+        dirs[0] = -1
+    else:
+        dirs[0] = 1
+    if pcPos[1] > desPos[1]:
+        dirs[1] = -1
+    else:
+        dirs[1] = 1
+    return dirs
+
+def checkCardinal(pcPos, desPos):
+    change = absChange(pcPos, desPos)
+    dirs = changeDir(pcPos, desPos)
+    if change[0] == 0:
+        for i in range(change[1]):
+            if board[pcPos[0], (pcPos[1] + ((i+1)*dirs[1]))] != _:
+                return False
+        return True
+    elif change[1] == 0:
+        for i in range(change[0]):
+            if board[pcPos[1], (pcPos[0] + ((i+1)*dirs[0]))] != _:
+                return False
+        return True
+
+def checkLegal(pcPos, desPos):
+    if pcColour(pcPos) == pcColour(desPos):
+        return False
+    
+    if pieces[board[pcPos[0], pcPos[1]]].lower() == "n":
+        change = absChange(pcPos, desPos)
+        if change[0] == 2 and change[1] == 1:
+            return True
+        elif change[0] == 1 and change[1] == 2:
+            return True
+        else:
+            return False
+
+    elif pieces[board[pcPos[0], pcPos[1]]].lower() == "k":
+        change = absChange(pcPos, desPos)
+        if change[0] == 1 and change[1] == 1:
+            return True
+        elif change[0] == 1 and change[1] == 0:
+            return True
+        elif change[0] == 0 and change[1] == 1:
+            return True
+        else:
+            return False
+    
+    elif pieces[board[pcPos[0], pcPos[1]]].lower() == "r":
+        return checkCardinal(pcPos, desPos)
+    
+    else:
+        return True
+
+
 def drawBoard():
     for x in range(numSq):
         for y in range(numSq):
             if (x + y) % 2 == 0:
-                pygame.draw.rect(screen, (wSq), (sqSize * x, sqSize * y, sqSize * (x+1), sqSize * (y+1)))
+                if darkenedSquares[x, y]:
+                    pygame.draw.rect(screen, (wSqDark), (sqSize * x, sqSize * y, sqSize * (x+1), sqSize * (y+1)))
+                else:
+                    pygame.draw.rect(screen, (wSq), (sqSize * x, sqSize * y, sqSize * (x+1), sqSize * (y+1)))
             else:
-                pygame.draw.rect(screen, (bSq), (sqSize * x, sqSize * y, sqSize * (x+1), sqSize * (y+1)))
+                if darkenedSquares[x, y]:
+                    pygame.draw.rect(screen, (bSqDark), (sqSize * x, sqSize * y, sqSize * (x+1), sqSize * (y+1)))
+                else:
+                    pygame.draw.rect(screen, (bSq), (sqSize * x, sqSize * y, sqSize * (x+1), sqSize * (y+1)))
 
 def drawPieces():
     for x in range(numSq):
         for y in range(numSq):
             screen.blit(board[x, y], (sqSize * x, sqSize * y))
 
+def getSquareClicked(pos):
+    posX = pos[0]
+    posY = pos[1]
+    for x in range(numSq):
+        lowerBoundX = sqSize * x
+        upperBoundX = sqSize * (x+1)
+        if posX > upperBoundX or posX < lowerBoundX:
+            continue
+        for y in range(numSq):
+            lowerBoundY = sqSize * y
+            upperBoundY = sqSize * (y+1)
+            if posY < upperBoundY and posY > lowerBoundY:
+                sq = [x ,y]
+                return sq
+
 def decodeFEN(FEN):
     FENsplit = FEN.split()
     pcs = FENsplit[0]
     rows = pcs.split("/")
     for y in range(numSq):
-        print(f"Column {y}")
         rowY = rows[y]
         skip = 0
         for x in range(len(rowY)):
@@ -101,6 +221,11 @@ def decodeFEN(FEN):
                 board[x + skip, y] = pieces[rowY[x]]                
             elif int(rowY[x]) > 1:
                 skip += (int(rowY[x]) - 1)
+    
+    if FENsplit[1] == "w":
+        turn = "w"
+    else:
+        turn = "b"
 
 decodeFEN(startFEN)
 
@@ -113,10 +238,41 @@ while True:
     if event.type == pygame.QUIT:
       pygame.quit()
       sys.exit()
-  
+
+    if event.type == pygame.MOUSEBUTTONDOWN:
+        pos = pygame.mouse.get_pos()
+
+        recentClick = getSquareClicked(pos)
+
+        if selectedSq == "none":
+            selectedSq = recentClick
+            darkenedSquares[selectedSq[0], selectedSq[1]] = True
+        elif recentClick == selectedSq:
+            darkenedSquares[selectedSq[0], selectedSq[1]] = False
+            selectedSq = "none"
+    
+    if event.type == pygame.MOUSEBUTTONUP:
+        pos = pygame.mouse.get_pos()
+
+        recentClick = getSquareClicked(pos)
+
+        if selectedSq != recentClick and selectedSq != "none":
+            if pcColour(selectedSq) == turn:
+                if board[selectedSq[0], selectedSq[1]] != _:
+                    if checkLegal(selectedSq, recentClick):
+                        if board[recentClick[0], recentClick[1]] != _:
+                            board[recentClick[0], recentClick[1]] = board[selectedSq[0], selectedSq[1]]
+                            if selectedSq != recentClick:
+                                board[selectedSq[0], selectedSq[1]] = _
+                        else:
+                            board[recentClick[0], recentClick[1]] = board[selectedSq[0], selectedSq[1]]
+                            board[selectedSq[0], selectedSq[1]] = _
+                        turn = turnFlip[turn]
+                darkenedSquares[selectedSq[0], selectedSq[1]] = False
+                selectedSq = "none"
   # Update.
-  
+
   # Draw.
-  
+
   pygame.display.flip()
-  fpsClock.tick(fps)
+  fpsClock.tick(fps) 
