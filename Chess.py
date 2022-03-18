@@ -10,7 +10,7 @@ monitorInfo = pygame.display.Info()
 fps = 60
 fpsClock = pygame.time.Clock()
 
-boardSize = monitorInfo.current_h
+boardSize = monitorInfo.current_h - 70
 sidebar = 0
 numSq = 8
 sqSize = boardSize/numSq
@@ -21,39 +21,39 @@ wSq = (240, 191, 96)
 wSqDark = (200, 151, 56)
 recentClick = [3, 3]
 selectedSq = "none"
-turn = "w"
+global turn
 
-startFEN = "r2Bk2r/ppp2ppp/2p5/8/4n1b1/3P4/PPP1KbPP/RN1Q1B1R w kq - 2 9" #FEN string the game is started on
+startFEN = "rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1" #FEN string the game is started on
 
 width, height = boardSize + sidebar, boardSize
 screen = pygame.display.set_mode((width, height))
 
 #Import pieces
-K = pygame.image.load("Chess/Chess_Pieces/K.png")
+K = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/K.png")
 K = pygame.transform.scale(K, (sqSize, sqSize))
-k = pygame.image.load("Chess/Chess_Pieces/_K.png")
+k = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/_K.png")
 k = pygame.transform.scale(k, (sqSize, sqSize))
-Q = pygame.image.load("Chess/Chess_Pieces/Q.png")
+Q = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/Q.png")
 Q = pygame.transform.scale(Q, (sqSize, sqSize))
-q = pygame.image.load("Chess/Chess_Pieces/_Q.png")
+q = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/_Q.png")
 q = pygame.transform.scale(q, (sqSize, sqSize))
-B = pygame.image.load("Chess/Chess_Pieces/B.png")
+B = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/B.png")
 B = pygame.transform.scale(B, (sqSize, sqSize))
-b = pygame.image.load("Chess/Chess_Pieces/_B.png")
+b = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/_B.png")
 b = pygame.transform.scale(b, (sqSize, sqSize))
-N = pygame.image.load("Chess/Chess_Pieces/N.png")
+N = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/N.png")
 N = pygame.transform.scale(N, (sqSize, sqSize))
-n = pygame.image.load("Chess/Chess_Pieces/_N.png")
+n = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/_N.png")
 n = pygame.transform.scale(n, (sqSize, sqSize))
-R = pygame.image.load("Chess/Chess_Pieces/R.png")
+R = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/R.png")
 R = pygame.transform.scale(R, (sqSize, sqSize))
-r = pygame.image.load("Chess/Chess_Pieces/_R.png")
+r = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/_R.png")
 r = pygame.transform.scale(r, (sqSize, sqSize))
-P = pygame.image.load("Chess/Chess_Pieces/P.png")
+P = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/P.png")
 P = pygame.transform.scale(P, (sqSize, sqSize))
-p = pygame.image.load("Chess/Chess_Pieces/_P.png")
+p = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/_P.png")
 p = pygame.transform.scale(p, (sqSize, sqSize))
-_ = pygame.image.load("Chess/Chess_Pieces/-.png")
+_ = pygame.image.load("C:/Users/18296/.vscode/Chess/Chess_Pieces/-.png")
 _ = pygame.transform.scale(_, (0, 0))
 
 #Pieces Dict
@@ -95,6 +95,7 @@ turnFlip = {
 #Board
 board = np.array([[_ for x in range(numSq)] for y in range(numSq)])
 darkenedSquares = np.array([[False for x in range(numSq)] for y in range(numSq)])
+hasMoved = np.array([[0 for x in range(numSq)] for y in range(numSq)])
 
 #Functions
 def isInt(integer):
@@ -134,15 +135,28 @@ def checkCardinal(pcPos, desPos):
     change = absChange(pcPos, desPos)
     dirs = changeDir(pcPos, desPos)
     if change[0] == 0:
-        for i in range(change[1]):
+        for i in range(change[1] - 1):
             if board[pcPos[0], (pcPos[1] + ((i+1)*dirs[1]))] != _:
                 return False
         return True
     elif change[1] == 0:
-        for i in range(change[0]):
-            if board[pcPos[1], (pcPos[0] + ((i+1)*dirs[0]))] != _:
+        for i in range(change[0] - 1):
+            if board[(pcPos[0] + ((i+1)*dirs[0])), pcPos[1]] != _:
                 return False
         return True
+    else:
+        return False
+
+def checkDiagonal(pcPos, desPos):
+    change = absChange(pcPos, desPos)
+    dirs = changeDir(pcPos, desPos)
+    if change[0] == change[1]: 
+        for i in range(change[0] - 1):
+            if board[(pcPos[0] + (i + 1) * dirs[0]), (pcPos[1] + (i + 1) * dirs[1])] != _:
+                return False
+        return True
+    else:
+        return False
 
 def checkLegal(pcPos, desPos):
     if pcColour(pcPos) == pcColour(desPos):
@@ -171,10 +185,27 @@ def checkLegal(pcPos, desPos):
     elif pieces[board[pcPos[0], pcPos[1]]].lower() == "r":
         return checkCardinal(pcPos, desPos)
     
+    elif pieces[board[pcPos[0], pcPos[1]]].lower() == "b":
+        return checkDiagonal(pcPos, desPos)
+    
+    elif pieces[board[pcPos[0], pcPos[1]]].lower() == "q":
+        if checkCardinal(pcPos, desPos):
+            return True
+        elif checkDiagonal(pcPos, desPos):
+            return True
+        else:
+            return False
+    
+    elif pieces[board[pcPos[0], pcPos[1]]].lower() == "p":
+        change = absChange(pcPos, desPos)
+        if change[0] > 1 and hasMoved[pcPos[0], pcPos[1]] == "1":
+            return False
+        elif change[0] == 2 and hasMoved[pcPos[0], pcPos[1]] == "0":
+            pass
+
     else:
         return True
-
-
+    
 def drawBoard():
     for x in range(numSq):
         for y in range(numSq):
@@ -210,6 +241,8 @@ def getSquareClicked(pos):
                 return sq
 
 def decodeFEN(FEN):
+    global turn
+
     FENsplit = FEN.split()
     pcs = FENsplit[0]
     rows = pcs.split("/")
@@ -267,6 +300,7 @@ while True:
                         else:
                             board[recentClick[0], recentClick[1]] = board[selectedSq[0], selectedSq[1]]
                             board[selectedSq[0], selectedSq[1]] = _
+                        hasMoved[selectedSq[0], selectedSq[1]] = 1
                         turn = turnFlip[turn]
                 darkenedSquares[selectedSq[0], selectedSq[1]] = False
                 selectedSq = "none"
